@@ -1,7 +1,18 @@
-# ESP32 모터 WiFi 제어 (esp32_motor_contol.mp4 재현)
+# ESP32 Motor Control — WiFi + MCP 원격 모터 제어
 
-영상과 동일 구성: ESP32 자체에 HTTP 서버를 띄우고, 폰/PC/AI 어디서든 WiFi 로 명령 전송.
-외부 서버·MCP 불필요 — ESP32 가 곧 서버다.
+![cover](docs/cover.png)
+
+ESP32 자체에 HTTP 서버를 띄우고, 폰/PC/AI 어디서든 WiFi 로 모터를 제어한다.
+AI(Claude 등)는 표준 MCP 프로토콜로, 사람은 브라우저/curl 로 — 두 경로 모두 ESP32 하나로 수렴.
+
+```
+Claude (MCP tools) ─→ esp32-motor-mcp (Rust stdio MCP) ─→ HTTP ─→ ESP32 웹서버 ─→ 연속회전 서보
+폰 브라우저 / curl ──────────────────────────────────────→ ↗
+```
+
+- 펌웨어: Arduino (ESP32-S3 / 일반 ESP32), 외부 라이브러리 의존 0
+- MCP 서버: Rust, JSON-RPC stdio 직접 구현 (의존성 serde_json 뿐)
+- 범용 시퀀스 언어: "왼쪽 2바퀴 돌고 1초 쉬고 오른쪽 1바퀴" = `L2,W1,R1`
 
 ## 1. 주문 부품 (영상 실물 기준 명칭)
 
