@@ -82,8 +82,26 @@ curl "http://<IP>/api/cal?spr_left=0.625"  # 10초에 16바퀴였으면 10/16=0.
 ```
 보정값은 NVS 에 저장되어 재부팅 후에도 유지.
 
-## 5. AI 자연어 제어 (영상의 채팅 부분)
+## 5. MCP 원격 제어 (표준 경로 — 영상의 AI 채팅 부분)
 
-MCP 없이도 Claude Code 세션에서 바로 가능:
-"모터 왼쪽으로 2바퀴 돌고 1초 쉬고 오른쪽 1바퀴" → Claude 가 `curl "http://<IP>/api/seq?seq=L2,W1,R1"` 실행.
-API 가 단순 텍스트 시퀀스라 어떤 AI 든 명령 생성이 쉬움.
+`mcp-server/` = Rust stdio MCP 서버. ESP32 HTTP API 를 표준 MCP tools 로 노출.
+Claude Code 에 user 스코프로 등록 완료 (`claude mcp list` → esp32-motor Connected).
+
+| MCP tool | 기능 |
+|---|---|
+| `motor_status` | 상태 조회 (회전중/큐/보정값/IP/신호세기) |
+| `motor_turn` | 방향+바퀴수+속도 회전 |
+| `motor_seq` | 범용 시퀀스 실행 (L/R/W/S 문법 + repeat) |
+| `motor_stop` | 즉시 정지 |
+| `motor_calibrate` | 보정값 설정 (NVS 저장) |
+| `motor_cal_run` | 10초 회전 보정 도우미 |
+
+사용: Claude 세션에서 "모터 왼쪽 2바퀴 돌고 1초 쉬고 오른쪽 1바퀴" → `motor_seq(seq="L2,W1,R1")` 자동 호출.
+
+ESP32 주소 설정 (둘 중 하나):
+- 기본: `~/.claude.json` 의 esp32-motor env `ESP32_MOTOR_URL` (현재 AP 폴백 주소 http://192.168.4.1 — 보드가 공유기에 붙으면 실제 IP 로 변경)
+- 호출별: 각 tool 의 `host` 인자로 재정의
+
+재빌드: `cd mcp-server && cargo build --release`
+
+MCP 를 안 쓰는 클라이언트(폰 브라우저, curl, 타 자동화)는 4번 API 를 그대로 사용 — 두 경로 모두 ESP32 자체 서버 하나로 수렴.
