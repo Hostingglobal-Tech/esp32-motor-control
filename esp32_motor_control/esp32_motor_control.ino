@@ -235,6 +235,43 @@ void handleCal() {
   handleStatus();
 }
 
+// ---- WiFi 자격정보 NVS 저장 (소스코드에 비밀번호 없음) ----
+unsigned long restartAtMs = 0;
+
+void saveWifiCreds(const String &ssid, const String &pass) {
+  prefs.begin("wifi", false);
+  prefs.putString("ssid", ssid);
+  prefs.putString("pass", pass);
+  prefs.end();
+}
+
+void handleWifiSet() {
+  String ssid = server.arg("ssid");
+  String pass = server.arg("pass");
+  if (ssid.length() == 0) { sendJson(400, "{\"ok\":false,\"error\":\"ssid required\"}"); return; }
+  saveWifiCreds(ssid, pass);
+  sendJson(200, "{\"ok\":true,\"note\":\"saved to NVS, rebooting in 1s\"}");
+  restartAtMs = millis() + 1000;
+}
+
+// 시리얼 프로비저닝: "WIFI <ssid> <password>" 한 줄 입력 → NVS 저장 → 재부팅
+void pollSerialProvision() {
+  if (!Serial.available()) return;
+  String line = Serial.readStringUntil('\n');
+  line.trim();
+  if (!line.startsWith("WIFI ")) return;
+  String rest = line.substring(5);
+  rest.trim();
+  int sp = rest.indexOf(' ');
+  String ssid = (sp < 0) ? rest : rest.substring(0, sp);
+  String pass = (sp < 0) ? "" : rest.substring(sp + 1);
+  if (ssid.length() == 0) { Serial.println("usage: WIFI <ssid> <password>"); return; }
+  saveWifiCreds(ssid, pass);
+  Serial.printf("WiFi saved to NVS: %s (rebooting)\n", ssid.c_str());
+  delay(300);
+  ESP.restart();
+}
+
 // 보정 도우미: 지정 방향으로 정확히 10초 회전 → 바퀴 수를 세서 spr = 10/바퀴수
 void handleCalRun() {
   String dir = server.arg("dir");
@@ -278,6 +315,10 @@ h3{margin:14px 0 6px}
 <h3>시퀀스 (예: L2,W1,R1 = 왼쪽2바퀴, 1초 쉬고, 오른쪽1바퀴)</h3>
 <input id="seq" value="L2,W1,R1">
 <button onclick="api('/api/seq?seq='+encodeURIComponent(document.getElementById('seq').value))">시퀀스 실행</button>
+<h3>WiFi 공유기 등록 (NVS 저장 후 재부팅)</h3>
+<input id="wssid" placeholder="SSID (2.4GHz)">
+<input id="wpass" type="password" placeholder="비밀번호">
+<button onclick="api('/api/wifi?ssid='+encodeURIComponent(document.getElementById('wssid').value)+'&pass='+encodeURIComponent(document.getElementById('wpass').value))">저장 후 재부팅</button>
 <script>
 async function api(u){try{await fetch(u)}catch(e){} refresh()}
 async function refresh(){try{
@@ -340,10 +381,14 @@ void setup() {
 
   WiFi.mode(WIFI_STA);
   bool connected = false;
-  // 1순위: config.h 에 지정된 공유기 (설정된 경우만)
-  if (strlen(WIFI_SSID) > 0) {
-    Serial.printf("Trying configured AP: %s\n", WIFI_SSID);
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
+  // 1순위: NVS 에 저장된 공유기 (시리얼 "WIFI <ssid> <pass>" 또는 웹 설정폼으로 저장)
+  prefs.begin("wifi", true);
+  String nvSsid = prefs.getString("ssid", "");
+  String nvPass = prefs.getString("pass", "");
+  prefs.end();
+  if (nvSsid.length() > 0) {
+    Serial.printf("Trying saved AP: %s\n", nvSsid.c_str());
+    WiFi.begin(nvSsid.c_str(), nvPass.c_str());
     connected = waitConnect(12000);
   }
   // 2순위: 공개 AP 스캔 → 신호 센 순으로 자동 연결
@@ -367,6 +412,7 @@ void setup() {
   server.on("/api/stop", handleStop);
   server.on("/api/cal", handleCal);
   server.on("/api/cal_run", handleCalRun);
+  server.on("/api/wifi", handleWifiSet);
   server.onNotFound([]() { sendJson(404, "{\"ok\":false,\"error\":\"not found\"}"); });
   server.begin();
   Serial.println("HTTP server started");
@@ -375,4 +421,6 @@ void setup() {
 void loop() {
   server.handleClient();
   tickQueue();
+  pollSerialProvision();
+  if (restartAtMs && millis() >= restartAtMs) ESP.restart();
 }
