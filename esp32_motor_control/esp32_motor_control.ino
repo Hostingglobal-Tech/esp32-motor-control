@@ -291,6 +291,47 @@ setInterval(refresh,1000);refresh();
 
 void handleRoot() { server.send(200, "text/html", PAGE); }
 
+// ---- WiFi 연결 도우미 ----
+bool waitConnect(unsigned long timeoutMs) {
+  unsigned long t0 = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t0 < timeoutMs) {
+    delay(300);
+    Serial.print(".");
+  }
+  Serial.println();
+  return WiFi.status() == WL_CONNECTED;
+}
+
+// 공개(암호 없는) AP 스캔 → RSSI 내림차순 최대 5곳 시도
+bool connectStrongestOpenAp() {
+  Serial.println("Scanning for open APs...");
+  int n = WiFi.scanNetworks();
+  if (n <= 0) { Serial.println("no networks found"); return false; }
+
+  int idx[16];
+  int cnt = 0;
+  for (int i = 0; i < n && cnt < 16; i++) {
+    if (WiFi.encryptionType(i) == WIFI_AUTH_OPEN && WiFi.SSID(i).length() > 0) idx[cnt++] = i;
+  }
+  if (cnt == 0) { Serial.println("no open APs"); WiFi.scanDelete(); return false; }
+  // RSSI 내림차순 정렬
+  for (int a = 0; a < cnt - 1; a++)
+    for (int b = a + 1; b < cnt; b++)
+      if (WiFi.RSSI(idx[b]) > WiFi.RSSI(idx[a])) { int t = idx[a]; idx[a] = idx[b]; idx[b] = t; }
+
+  int tries = (cnt < 5) ? cnt : 5;
+  for (int a = 0; a < tries; a++) {
+    String ssid = WiFi.SSID(idx[a]);
+    Serial.printf("Open AP try %d/%d: %s (%d dBm)\n", a + 1, tries, ssid.c_str(), WiFi.RSSI(idx[a]));
+    WiFi.begin(ssid.c_str());
+    if (waitConnect(10000)) { WiFi.scanDelete(); return true; }
+    WiFi.disconnect(true);
+    delay(200);
+  }
+  WiFi.scanDelete();
+  return false;
+}
+
 void setup() {
   Serial.begin(115200);
   pwmInit();
@@ -298,15 +339,20 @@ void setup() {
   motorStop();
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  Serial.print("WiFi connecting");
-  unsigned long t0 = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 15000) {
-    delay(300);
-    Serial.print(".");
+  bool connected = false;
+  // 1순위: config.h 에 지정된 공유기 (설정된 경우만)
+  if (strlen(WIFI_SSID) > 0) {
+    Serial.printf("Trying configured AP: %s\n", WIFI_SSID);
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    connected = waitConnect(12000);
   }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("\nSTA connected: http://%s/\n", WiFi.localIP().toString().c_str());
+  // 2순위: 공개 AP 스캔 → 신호 센 순으로 자동 연결
+#if AUTO_OPEN_AP
+  if (!connected) connected = connectStrongestOpenAp();
+#endif
+  if (connected) {
+    Serial.printf("\nSTA connected: SSID=%s http://%s/\n",
+                  WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
   } else {
     WiFi.mode(WIFI_AP);
     WiFi.softAP(AP_SSID, AP_PASS);
