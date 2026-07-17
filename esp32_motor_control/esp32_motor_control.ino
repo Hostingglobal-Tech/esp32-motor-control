@@ -63,6 +63,8 @@ struct Step {
   int speedPct;      // 1~100
 };
 
+void startStep(const Step &s);   // 명시 프로토타입 (Arduino 자동 프로토타입 삽입 위치 문제 회피)
+
 static const int QUEUE_MAX = 32;
 Step  queueBuf[QUEUE_MAX];
 int   queueLen = 0, queueIdx = 0;
