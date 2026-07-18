@@ -14,8 +14,14 @@
 #define AP_PASS     "motor1234"
 
 // ===== 하드웨어 =====
-// 연속회전 서보 (FS90R 등) 신호선 GPIO
-#define SERVO_PIN   4
+// 연속회전 서보 (FS90R 등) 신호선 GPIO — 최대 3개까지 독립 제어.
+// 현재: 서보 1개를 ESP32-S3-DevKitC-1 의 J1 헤더 끝 [GPIO14][5V][GND] 3핀에
+// 점퍼선 없이 직결(서보 커넥터 신호-전원-접지 순과 일치, 중앙이 5V). USB 5V 로 1개 구동.
+// GPIO14 는 strapping(0,3,45,46)·USB(19,20)·UART0(43,44)·SPI Flash(26-32) 어디와도
+// 안 겹치는 범용 핀 (FSPIWP 는 외부 옥탈 SPI 전용 대체기능일 뿐, 기본 GPIO 자유). 안전.
+// 3개로 확장 시: 외부 5V + 공통 GND 배선 후 SERVO_COUNT 3, {4, 5, 6} 로 되돌린다.
+#define SERVO_COUNT 1
+static const int SERVO_PINS[SERVO_COUNT] = {14};
 
 // ===== 서보 펄스폭 (µs) =====
 // 1500 = 정지, 1500 미만 = 한 방향, 초과 = 반대 방향.
